@@ -10,3 +10,9 @@ class UserRoleSerialzer(serializers.ModelSerializer):
     class Meta:
         model = UserRole
         fields = "__all__"
+
+class UserRoleBasicSerialzer(serializers.ModelSerializer):
+
+    class Meta:
+        model = UserRole
+        fields = "__all__"

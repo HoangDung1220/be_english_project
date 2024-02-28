@@ -48,6 +48,7 @@ urlpatterns = [
     path("api/v1/", include("study.urls")),
     path("api/v1/", include("group.urls")),
     path("api/v1/", include("post.urls")),
+    path("api/v1/", include("rating.urls")),
 
 ] 
 

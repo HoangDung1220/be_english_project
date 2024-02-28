@@ -17,7 +17,8 @@ class Course(models.Model):
     description = models.CharField(max_length=256, null=True, blank=True)
     tag = models.CharField(max_length=255, null=True, blank=True)
     number_user_learned = models.IntegerField(default=0)
-
+    delete_flag = models.BooleanField(default=False)
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

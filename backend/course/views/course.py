@@ -6,11 +6,14 @@ from course.models.vocabulary import Vocabulary
 from study.models.user_course import UserCourse
 from study.models.course_level import CourseLevel
 from group.models.group_course import GroupCourse
+from group.models.group_member import GroupMember
 from django.db.models import Q
 from rating.models.rating_course import RatingCourse
-
-from course.serializers.course import CourseSerializer,CourseDetailSerializer,CourseInformationSerializer, CourseSuggestSerializer, CourseAdminSerializer, TagSerializer
+from course.serializers.course import CourseBasic1Serializer
+from course.serializers.course import CourseSerializer,CourseDetailSerializer,CourseInformationSerializer, CourseSuggestSerializer, CourseAdminSerializer, TagSerializer, CourseBasicSerializer
 from rest_framework.response import Response
+from suggest.suggest import Suggest
+
 
 
 class CourseView(generics.ListCreateAPIView):
@@ -68,13 +71,13 @@ class CourseDetailView(generics.RetrieveAPIView):
     queryset = Course.objects.filter(status="public")
     serializer_class = CourseDetailSerializer
 
-
+    # moi chinh sua
     def get(self, request, *args, **kwargs):
         id=self.kwargs['pk']
         levels = Level.objects.filter(course__id=id)
         levels_id = [item.id for item in levels]
         vocabularys = Vocabulary.objects.filter(course__id = id).exclude(level__id__in=levels_id).order_by("indexing")
-        course = Course.objects.filter(status="public",id=id)
+        course = Course.objects.filter(id=id)
         print(course)
         data = {
             "level" : levels,
@@ -110,7 +113,11 @@ class CourseAdminView(generics.ListAPIView):
     serializer_class = CourseAdminSerializer
 
     def get(self, request, *args, **kwargs):
-        courses = Course.objects.all()
+        input = self.request.query_params.get("search",None)
+        courses = Course.objects.filter(delete_flag=False).order_by("-created_at")
+
+        if input!=None:
+            courses = courses.filter(Q(title__contains=input) | Q(description__contains=input))
         lst = []
         for course in courses:
             ratings = RatingCourse.objects.filter(course__id= course.id)
@@ -141,9 +148,45 @@ class CoursePublicView(generics.ListAPIView):
             courses = Course.objects.filter(category__id = category)
         courses = courses.filter(status="public").order_by("-number_user_learned")
         if tag !=None:
-            courses = courses.filter(tag__contains=tag)
+             courses = courses.filter(tag__contains=tag)
         if search !=None:
             courses = courses.filter(Q(title__contains=search) | Q(description__contains=search))
+
+        serializer = CourseSerializer(courses,context={"request": request}, many=True)
+        return Response(data=serializer.data,status=status.HTTP_200_OK)
+    
+class CourseHomeView(generics.ListAPIView):
+    queryset = Course.objects.all()
+    serializer_class = CourseSerializer
+
+    def get(self, request, *args, **kwargs):
+        user_id=self.kwargs['id']
+        tag=self.request.query_params.get("tag",None)
+        search=self.request.query_params.get("search",None)
+
+        # suggestion
+        ids = Suggest.suggestCourse(user_id)
+        print(ids)
+        if len(ids)>0:
+            courses2 = Course.objects.filter(id__in=ids).distinct()
+            if tag !=None:
+                courses2 = courses2.filter(tag__contains=tag)
+            if search !=None:
+                courses2 = courses2.filter(Q(title__contains=search) | Q(description__contains=search))
+
+            courses1 = Course.objects.filter(status="public").exclude(id__in=ids).order_by("-number_user_learned")
+            if tag !=None:
+                courses1 = courses1.filter(tag__contains=tag)
+            if search !=None:
+                courses1 = courses1.filter(Q(title__contains=search) | Q(description__contains=search))
+            courses = courses2.union(courses1)
+        else: 
+            courses = Course.objects.filter(status="public").order_by("-number_user_learned")
+
+        # if tag !=None:
+        #     courses = courses.filter(tag__contains=tag)
+        # if search !=None:
+        #     courses = courses.filter(Q(title__contains=search) | Q(description__contains=search))
 
         serializer = CourseSerializer(courses,context={"request": request}, many=True)
         return Response(data=serializer.data,status=status.HTTP_200_OK)
@@ -158,9 +201,10 @@ class TagPublicView(generics.ListAPIView):
         tags = {"default"}
         data = []
         for course in courses:
-            tag = course.tag.split()
-            for t in tag:
-                tags.add(t)
+            if course.tag!=None:
+                tag = course.tag.split()
+                for t in tag:
+                    tags.add(t)
         tags.remove("default")
         for t in tags:
             item = {
@@ -208,5 +252,106 @@ class SearchCourseView(viewsets.ViewSet):
             courses = courses.filter(tag__contains=tags)
         serializer = CourseSerializer(courses,context={"request": request}, many=True)
         return Response(data=serializer.data,status=status.HTTP_200_OK)
+    
+class SearchCoursePersonalView(generics.ListAPIView):
+
+    def get(self, request, *args, **kwargs):
+        id_user = self.kwargs['user']
+        status1 = self.request.query_params.get("status",None)
+        value = self.request.query_params.get("input",None)
+        # flag =1 > get data of me
+        flag = self.request.query_params.get("flag",None)
+
+        if flag == "1":
+            courses = Course.objects.filter(user_created__id = id_user)
+        else:
+            # get course tu group course > lay group cua nguoi dung > lay course trong group do > va lay cac khoa hoc ben ngoai ma nguoi dung dang hoc
+            user_courses = UserCourse.objects.filter(user__id = id_user)
+            id_courses1 =[item.course.id for item in user_courses]
+
+            groups = GroupMember.objects.filter(member__id = id_user).values("group")
+            group_course = GroupCourse.objects.filter(group__id__in=groups).distinct()
+            id_courses2 =[item.course.id for item in group_course]
+            ids = id_courses1+id_courses2
+
+            courses = Course.objects.filter(id__in=ids).exclude(user_created__id = id_user)
+        
+        if status1=='TO DO':
+            user_course = UserCourse.objects.filter(user__id = id_user)
+            ids = [item.course.id for item in user_course]
+            courses = courses.exclude(id__in = ids)
+        elif status1=='DOING':
+            user_course = UserCourse.objects.filter(user__id = id_user,is_complete=False)
+            ids = [item.course.id for item in user_course]
+            courses = courses.filter(id__in = ids)
+        elif status1=="COMPLETE":
+            user_course = UserCourse.objects.filter(user__id = id_user,is_complete=True)
+            ids = [item.course.id for item in user_course]
+            courses = courses.filter(id__in = ids)
+
+        if value!=None:
+            courses = courses.filter(Q(title__contains=value) | Q(description__contains=value))
+        
+        serializer = CourseSerializer(courses,context={"request": request}, many=True)
+        return Response(data=serializer.data,status=status.HTTP_200_OK)
+    
+class CreateImageCouse(generics.CreateAPIView):
+    queryset = Course.objects.all()
+    serializer_class = CourseBasicSerializer
+
+class UpdateImageCouse(generics.UpdateAPIView):
+    queryset = Course.objects.all()
+    serializer_class = CourseBasicSerializer
+
+class CoursePublicEachUser(generics.ListAPIView):
+    queryset = Course.objects.all()
+    serializer_class = CourseBasicSerializer         
+
+    def get(self, request, *args, **kwargs):
+        id = self.kwargs["id"]
+        courses = Course.objects.filter(user_created__id=id, status="public").order_by("-created_at")
+        serializer = CourseBasicSerializer(courses,many=True,context={"request": request})
+        return Response(data=serializer.data,status=status.HTTP_200_OK)
+    
+class CourseEachUserAdmin(generics.ListAPIView):
+    queryset = Course.objects.all()
+    serializer_class = CourseBasicSerializer         
+
+    def get(self, request, *args, **kwargs):
+        id = self.kwargs["id"]
+        courses = Course.objects.filter(user_created__id=id).order_by("-created_at")
+        serializer = CourseBasicSerializer(courses,many=True,context={"request": request})
+        return Response(data=serializer.data,status=status.HTTP_200_OK)
+    
+class DeleteCourse(generics.DestroyAPIView):
+
+    def delete(self, request, *args, **kwargs):
+        id = self.kwargs["pk"]
+
+        courses = Course.objects.filter(id=id)
+        if len(courses)>0:
+            courses[0].delete_flag = True
+            courses[0].save()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(dict(msg="Can't delete course", status=status.HTTP_400_BAD_REQUEST)) 
+    
+class CoursePublicEachUserAdmin(generics.ListAPIView):
+    queryset = Course.objects.all()
+    serializer_class = CourseBasicSerializer         
+
+    def get(self, request, *args, **kwargs):
+        id = self.kwargs["id"]
+        courses = Course.objects.filter(user_created__id=id, delete_flag=False).order_by("-created_at")
+        serializer = CourseBasicSerializer(courses,many=True,context={"request": request})
+        return Response(data=serializer.data,status=status.HTTP_200_OK)
+    
+class GetCourseView(generics.RetrieveAPIView):
+    queryset = Course.objects.filter(delete_flag = False)
+    serializer_class = CourseBasic1Serializer
+
+
 
             
+
+
+

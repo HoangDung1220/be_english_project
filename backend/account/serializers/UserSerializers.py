@@ -9,6 +9,7 @@ from django.utils.http import urlsafe_base64_decode
 
 from account.models import User
 from account.models.users_roles import UserRole
+from account.serializers.role import RoleSerializer
 
 class UserDetailSerializer(serializers.ModelSerializer):
     class Meta:
@@ -136,6 +137,6 @@ class LogoutSerializer(serializers.Serializer):
         except TokenError:
             self.fail("bad_token")
 
-# class AccountSerializer(serializers.Serializer):
-#     account = UserSerializer()
-#     roles = serializers.CharField()
+class AccountSerializer(serializers.Serializer):
+    account = UserSerializer()
+    roles = serializers.CharField()

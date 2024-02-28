@@ -7,6 +7,7 @@ from rest_framework.decorators import action
 
 from study.models.course_level import CourseLevel
 from study.models.user_course import UserCourse
+from study.models.review_word import ReviewWord
 
 class VocabularyTestView(generics.ListAPIView):
     queryset = Vocabulary.objects.all()
@@ -46,7 +47,40 @@ class VocabularyView(generics.CreateAPIView):
     serializer_class = VocabularySerializer
 
     def post(self, request, *args, **kwargs):
-        request_data = request.data
+        vocabulary = request.data.get("vocabulary",None)
+        course = request.data.get("course",None)
+        mean = request.data.get("mean",None)
+        sample = request.data.get("sample",None)
+        description = request.data.get("description",None)
+        image = request.data.get("image",None)
+        audio = request.data.get("audio",None)
+        level = request.data.get("level",None)
+
+        indexing = 1
+        data = Vocabulary.objects.filter(level__id = level).order_by("-indexing")
+        if len(data)>0:
+            indexing = data[0].indexing +1
+        
+        data = {
+            "vocabulary" : vocabulary,
+            "course":course,
+            "mean":mean,
+            "sample":sample,
+            "description":description,
+            "image":image,
+            "audio":audio,
+            "level":level,
+            "indexing":indexing
+        }
+        print(data)
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+
         
 class VocabularyUserView(viewsets.ViewSet):
 
@@ -67,8 +101,8 @@ class VocabularyUserView(viewsets.ViewSet):
             else: 
                 num_begin=1
 
-            if last_question+10<num_vocabularys:
-                num_last = last_question + 10
+            if last_question+2<num_vocabularys:
+                num_last = last_question + 2
             else:
                 num_last = num_vocabularys
             vocabularys = Vocabulary.objects.filter(course__id = id_course,level__id = id_level).filter(indexing__gte=num_begin, indexing__lte=num_last).order_by("indexing")
@@ -88,5 +122,37 @@ class VocabularyInCoursePublic(generics.ListAPIView):
         data = VocabularyMeanSerializer(vocabularys, many=True,context={"request": request}).data
         return Response(data, status=status.HTTP_201_CREATED)
 
+class ManagementVocabulary(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Vocabulary.objects.all()
+    serializer_class = VocabularySerializer
 
+
+class VocabularyUserReviewView(viewsets.ViewSet):
+
+    @action(methods=['GET',],detail=False)
+    def review(self,request,*args, **kwargs):
+        id_level = self.request.query_params.get("level",None)
+        id_user = self.request.query_params.get("user",None) 
+        vocabularys = Vocabulary.objects.filter(level__id = id_level).order_by("-indexing")
+        review_word = ReviewWord.objects.filter(user__id = id_user).filter(level__id=id_level)
+        if (len(review_word)>0):
+            if review_word[0].id_word_last!=None and review_word[0].id_word_last!=vocabularys[0]:
+                last_question = review_word[0].id_word_last.indexing
+            else:
+                last_question = 0
+            num_vocabularys = len(Vocabulary.objects.filter(level__id = id_level))
+            if last_question!=0:
+                num_begin= last_question+1 
+            else: 
+                num_begin=1
+
+            if last_question+2<num_vocabularys:
+                num_last = last_question + 2
+            else:
+                num_last = num_vocabularys
+            vocabularys = Vocabulary.objects.filter(level__id = id_level).filter(indexing__gte=num_begin, indexing__lte=num_last).order_by("indexing")
+            data = VocabularySerializer(vocabularys, many=True,context={"request": request}).data
+            return Response(dict(data=data,msg="Get successful", status=status.HTTP_200_OK))
+        else:
+            return Response(dict(msg="No data", status=status.HTTP_204_NO_CONTENT))
 

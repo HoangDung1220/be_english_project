@@ -9,9 +9,11 @@ from study.models.user_course import UserCourse
 from rating.models.rating_group import RatingGroup
 from django.db.models import Q
 
-
-
 class GroupView(generics.CreateAPIView):
+    queryset = Group.objects.all()
+    serializer_class = GroupSerializer
+
+class GetGroupView(generics.RetrieveAPIView):
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
 
@@ -20,16 +22,59 @@ class GroupDetailView(generics.ListAPIView):
     def get(self, request, *args, **kwargs):
         user_id = self.kwargs['user']
         lst = []
-        groups = Group.objects.filter(create_by__id=user_id)
+        groups = Group.objects.filter(create_by__id=user_id).order_by("-created_at")
         for group in groups:
             id = group.id
             courses = GroupCourse.objects.filter(group__id=id)
             members = GroupMember.objects.filter(group__id = id)
             members_course = []
+            ids_members = [item.member.id for item in members]
+
             if len(courses) >0 and len(members)>0:
                 for course in courses:
                     item_course = Course.objects.get(id=course.course.id)
-                    user_courses = UserCourse.objects.filter(course__id = course.course.id)
+                    user_courses = UserCourse.objects.filter(course__id = course.course.id, user__id__in = ids_members)
+                    data = {
+                        "course":item_course,
+                        "members" : user_courses
+                    }
+                    members_course.append(data)
+            group_course = GroupCourse.objects.filter(group__id = id).values("course")
+            user_courses = UserCourse.objects.filter(course__status='public').exclude(course__user_created = user_id).values("course")
+            public_courses = Course.objects.filter(Q(user_created__id = user_id) | Q(id__in=user_courses)).exclude(id__in = group_course).filter(status='public')[:10]
+            private_courses = Course.objects.filter(Q(user_created__id = user_id)).exclude(id__in = group_course).filter(Q(status='private') | Q(status='protected'))[:10]
+    
+            data = {
+                "group" : group,
+                "courses" : courses,
+                "members" : members,
+                "members_course" :members_course,
+                "public_course" : public_courses,
+                "private_course" : private_courses
+            }
+            lst.append(data)
+
+        d = GroupDetailSerialzer(lst,many=True,context={"request": request}).data
+        return Response(d, status=status.HTTP_201_CREATED)
+    
+class GroupOtherDetailView(generics.ListAPIView):
+
+    def get(self, request, *args, **kwargs):
+        user_id = self.kwargs['user']
+        lst = []
+        gm = GroupMember.objects.filter(member__id=user_id)
+        ids = [item.group.id for item in gm]
+        groups = Group.objects.filter(id__in=ids).exclude(create_by__id=user_id).order_by("-created_at")
+        for group in groups:
+            id = group.id
+            courses = GroupCourse.objects.filter(group__id=id)
+            members = GroupMember.objects.filter(group__id = id)
+            ids_members = [item.member.id for item in members]
+            members_course = []
+            if len(courses) >0 and len(members)>0:
+                for course in courses:
+                    item_course = Course.objects.get(id=course.course.id)
+                    user_courses = UserCourse.objects.filter(course__id = course.course.id, user__id__in = ids_members)
                     data = {
                         "course":item_course,
                         "members" : user_courses
@@ -77,6 +122,31 @@ class GroupSpaceView(generics.ListAPIView):
             return Response(data = serializers, status=status.HTTP_200_OK)
         except:
             return Response(status=status.HTTP_400_BAD_REQUEST)
+        
+class GroupSpaceSuggestView(generics.ListAPIView):
+    queryset = Group.objects.filter()
+    serializer_class = GroupSpaceSerializer()
+
+    def get(self, request, *args, **kwargs):
+        try:
+            id = self.kwargs['user']
+            group_member = GroupMember.objects.filter(member__id=id)
+            ids = [item.group.id for item in group_member]
+            datas =[]
+            groups = Group.objects.exclude(id__in = ids).filter(status="public")
+            for group in groups:
+                members = GroupMember.objects.filter(group__id= group.id).count()
+                courses = GroupCourse.objects.filter(group__id= group.id).count()
+                d = {
+                    "group" : group,
+                    "number_member" : members,
+                    "number_course" : courses
+                }
+                datas.append(d)
+            serializers = GroupSpaceSerializer(datas, many=True,context={"request": request}).data
+            return Response(data = serializers, status=status.HTTP_200_OK)
+        except:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
 
 class GroupAdminView(generics.ListAPIView):
     queryset = Group.objects.filter()
@@ -85,7 +155,10 @@ class GroupAdminView(generics.ListAPIView):
     def get(self, request, *args, **kwargs):
         try:
             datas =[]
-            groups = Group.objects.all()
+            input = self.request.query_params.get("search",None)
+            groups = Group.objects.all().order_by("-created_at")
+            if input!=None:
+                groups = groups.filter(name__contains=input)
             for group in groups:
                 members = GroupMember.objects.filter(group__id= group.id).count()
                 courses = GroupCourse.objects.filter(group__id= group.id).count()
@@ -140,3 +213,72 @@ class GroupDetailAdminView(generics.ListAPIView):
         d = GroupDetailSerialzer(data,context={"request": request}).data
         return Response(d, status=status.HTTP_201_CREATED)
     
+class GetGroupDetailAdminView(generics.RetrieveAPIView):
+
+    def get(self, request, *args, **kwargs):
+        group_id = self.kwargs['pk']
+        
+        group = Group.objects.get(id=group_id)
+        courses = GroupCourse.objects.filter(group__id=group_id)
+        members = GroupMember.objects.filter(group__id = group_id)
+        members_course = []
+        if len(courses) >0 and len(members)>0:
+            for course in courses:
+                item_course = Course.objects.get(id=course.course.id)
+                user_courses = UserCourse.objects.filter(course__id = course.course.id)
+                data = {
+                        "course":item_course,
+                        "members" : user_courses
+                    }
+                members_course.append(data)
+        group_course = GroupCourse.objects.filter(group__id = group_id).values("course")
+        user_courses = UserCourse.objects.all().values("course")
+        public_courses = Course.objects.all().exclude(id__in = group_course).filter(status='public')[:10]
+        private_courses = Course.objects.all().exclude(id__in = group_course).filter(Q(status='private') | Q(status='protected'))[:10]
+    
+        data = {
+                "group" : group,
+                "courses" : courses,
+                "members" : members,
+                "members_course" :members_course,
+                "public_course" : public_courses,
+                "private_course" : private_courses
+        }
+
+        d = GroupDetailSerialzer(data,context={"request": request}).data
+        return Response(d, status=status.HTTP_201_CREATED)
+    
+class GetGroupDetailView(generics.CreateAPIView):
+
+    def get(self, request, *args, **kwargs):
+        id = self.kwargs['id']
+        groups = Group.objects.filter(id=id)
+        if len(groups)>0:
+            courses = GroupCourse.objects.filter(group__id=id)
+            members = GroupMember.objects.filter(group__id = id)
+            members_course = []
+            if len(courses) >0 and len(members)>0:
+                for course in courses:
+                    item_course = Course.objects.get(id=course.course.id)
+                    user_courses = UserCourse.objects.filter(course__id = course.course.id)
+                    data = {
+                        "course":item_course,
+                        "members" : user_courses
+                    }
+                    members_course.append(data)
+            group_course = GroupCourse.objects.filter(group__id = id).values("course")
+            user_courses = UserCourse.objects.filter(course__status='public').values("course")
+            public_courses = Course.objects.exclude(id__in = group_course).filter(status='public')[:10]
+            private_courses = Course.objects.exclude(id__in = group_course).filter(Q(status='private') | Q(status='protected'))[:10]
+    
+            data = {
+                "group" : groups[0],
+                "courses" : courses,
+                "members" : members,
+                "members_course" :members_course,
+                "public_course" : public_courses,
+                "private_course" : private_courses
+            }
+
+            d = GroupDetailSerialzer(data,context={"request": request}).data
+            return Response(d, status=status.HTTP_201_CREATED)

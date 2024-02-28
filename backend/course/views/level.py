@@ -1,9 +1,10 @@
 from course.models.level import Level
 from rest_framework import generics, status
 from rest_framework.response import Response
-from course.serializers.level import LevelSerializer
+from course.serializers.level import LevelSerializer, LevelBasicSerializer,CourseLevelSerializer
+from course.models.vocabulary import Vocabulary
 
-class LevelView(generics.ListCreateAPIView):
+class LevelView(generics.CreateAPIView):
     serializer_class = LevelSerializer
     queryset = Level.objects.all()
 
@@ -26,4 +27,32 @@ class LevelView(generics.ListCreateAPIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
+class LevelShowView(generics.ListAPIView):
+    serializer_class = LevelBasicSerializer
+    queryset = Level.objects.all()
 
+    def get(self, request, *args, **kwargs):
+        id_course = self.kwargs['id']
+        level = Level.objects.filter(course__id=id_course).order_by("indexing")
+        serializer = LevelBasicSerializer(level, many=True)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+class LevelUpdateView(generics.UpdateAPIView):
+    serializer_class = LevelSerializer
+    queryset = Level.objects.all()
+
+class LevelVocabularyView(generics.ListAPIView):
+
+    def get(self, request, *args, **kwargs):
+        id_course = self.kwargs['id']
+        data = []
+        levels = Level.objects.filter(course__id=id_course).order_by("indexing")
+        for level in levels:
+            vocabularys = Vocabulary.objects.filter(level__id=level.id)
+            item = {
+                "level" : level,
+                "vocabularys" : vocabularys
+            }
+            data.append(item)
+        serializer = CourseLevelSerializer(data,many=True,context={"request": request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

@@ -2,7 +2,7 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from study.models.user_course import UserCourse
 from course.models.course import Course
-from study.serializers.user_course import UserCourseSerializer
+from study.serializers.user_course import UserCourseSerializer,UserCourseDetailSerializer
 
 class UserCourseView(generics.CreateAPIView):
     queryset = UserCourse.objects.filter(is_active=True)
@@ -28,3 +28,14 @@ class UserCourseView(generics.CreateAPIView):
                     return Response(dict(data=item[0].id,msg="User had learned before", status=status.HTTP_204_NO_CONTENT))
                 else:
                     return Response(dict(data=item[0].id,msg="User was learning", status=status.HTTP_204_NO_CONTENT))
+                
+class LeaderBoardView(generics.ListAPIView):
+    queryset = UserCourse.objects.all()
+    serializer_class = UserCourseDetailSerializer
+
+    def get(self, request, *args, **kwargs):
+        id_course = self.kwargs["id"]
+        usercourses = UserCourse.objects.filter(course__id= id_course).order_by("-total_score")
+        serializer = UserCourseDetailSerializer(usercourses, many=True)
+        return Response(data=serializer.data, status=status.HTTP_200_OK)
+

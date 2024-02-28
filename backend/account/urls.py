@@ -2,7 +2,9 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from django.urls import path, include
 from django.views.generic import RedirectView
 from account.views.UserView import *
-from account.views.user import UserView,GetUserView
+from account.views.user_role import *
+from account.views.user import UserView,GetUserView,GetMeView
+from account.views.follower import FollowerView,GetFollowerView,GetLeaderBoard
 from rest_framework import routers
 
 
@@ -20,8 +22,15 @@ urlpatterns = [
     path("logout", LogoutAPIView.as_view(), name="logout"),
     path('',include(router.urls)),
     path('user/<int:pk>',GetUserView.as_view()),
+    path('me/<int:pk>',GetMeView.as_view()),
     path('admin/account',AccountAdmin.as_view()),
+    path('admin/dashboard/account',AccountAdminDashboard.as_view()),
+    path('admin/role/<int:pk>',getRole.as_view()),
     path('admin/account/<int:pk>',AccountDetailAdmin.as_view()),
+    path('follower',FollowerView.as_view()),
+    path('follower/list/<int:id>',GetFollowerView.as_view()),
+    path('user-role',UserRoleView.as_view()),
+    path('leader-board/<int:id>',GetLeaderBoard.as_view()),
 
 
 ]

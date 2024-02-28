@@ -6,6 +6,7 @@ from course.models.vocabulary import Vocabulary
 from course.serializers.level import LevelSerializer
 from course.serializers.vocabulary import VocabularySerializer
 from course.serializers.category import CategorySerializer
+from account.serializers.UserSerializers import UserDetailSerializer
 
 class CourseSerializer(serializers.ModelSerializer):
     created_at = serializers.DateTimeField(format="%Y-%m-%d")
@@ -32,7 +33,7 @@ class CourseBasicSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Course
-        fields = ('id','category','user_created', 'title','description','tag','image') 
+        fields = ('id','category','user_created', 'title','description','tag','image','status') 
 
 class CourseDetailSerializer(serializers.Serializer):
     course = CourseBasicSerializer()
@@ -57,3 +58,11 @@ class CourseAdminSerializer(serializers.Serializer):
 
 class TagSerializer(serializers.Serializer):
     tags = serializers.CharField()
+
+class CourseBasic1Serializer(serializers.ModelSerializer):
+    user_created = UserDetailSerializer()
+
+    class Meta:
+        model = Course
+        fields = ('id','category','user_created', 'title','description','tag','image') 
+

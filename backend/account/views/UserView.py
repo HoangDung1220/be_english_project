@@ -3,7 +3,8 @@ from account.models import User
 from account.models.users_roles import UserRole
 from account.models.roles import Roles
 from account.serializers.UserSerializers import UserCreateSerializer, LoginSerializer, ChangePasswordSerializer, LogoutSerializer,UserDetailSerializer
-from account.serializers.UserSerializers import UserSerializer
+from account.serializers.UserSerializers import UserSerializer,AccountSerializer
+from account.serializers.role import RoleSerializer
 from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework import status,viewsets
@@ -104,9 +105,44 @@ class AccountAdmin(generics.ListAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
 
-    # def patch(self, request, *args, **kwargs):
+class AccountAdminDashboard(generics.ListAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
 
+    def get(self, request, *args, **kwargs):
+        users = User.objects.all().order_by("-total_mark_learned")
+        serializer = self.serializer_class(users,many=True)
+        return Response(data=serializer.data, status=status.HTTP_200_OK)
 
 class AccountDetailAdmin(generics.RetrieveAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+
+    # def get(self,request,*args, **kwargs):
+    #     id = self.kwargs["pk"]
+    #     try:
+    #         account = User.objects.get(id=id)
+    #         user_roles = UserRole.objects.filter(user__id = id)
+    #         ids = [item.role.id for item in user_roles]
+    #         roles = Roles.objects.filter(id__in = ids)
+    #         data = {
+    #             "account" : account,
+    #             "roles" : roles
+    #         }
+    #         serializer = AccountDetailSerializer(data)
+    #         return Response(data=serializer.data, status=status.HTTP_200_OK)
+    #     except:
+    #         return Response(dict(msg="Having error. Please try again", status=status.HTTP_400_BAD_REQUEST)) 
+
+class getRole(generics.ListAPIView):
+    def get(self,request,*args, **kwargs):
+        id = self.kwargs["pk"]
+        try:
+            user_roles = UserRole.objects.filter(user__id = id)
+            ids = [item.role.id for item in user_roles]
+            roles = Roles.objects.filter(id__in = ids)
+            serializer = RoleSerializer(roles, many=True)
+            return Response(data=serializer.data, status=status.HTTP_200_OK)
+        except:
+            return Response(dict(msg="Having error. Please try again", status=status.HTTP_400_BAD_REQUEST)) 
+
